@@ -6,10 +6,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Code base on github.com/shazow/ssh-chat/sshd
-
-// NewClientConfig creates a barebones ssh.ClientConfig to be used with ssh.Dial.
-func NewClientConfig(name string) *ssh.ClientConfig {
+// newClientConfig creates a barebones ssh.ClientConfig to be used with ssh.Dial.
+func newClientConfig(name string) *ssh.ClientConfig {
 	return &ssh.ClientConfig{
 		User: name,
 		Auth: []ssh.AuthMethod{
@@ -22,14 +20,14 @@ func NewClientConfig(name string) *ssh.ClientConfig {
 }
 
 type sshConnection struct {
-	Host string
-	Name string
-
-	Reader io.Reader
-	Writer io.WriteCloser
+	Host string // Host is the hostname:port to connect to on Connect()
+	Name string // Name is the client username to connect with
 
 	Term         string // TERM env var to send, suggested: "bot" or "xterm"
 	ClientConfig *ssh.ClientConfig
+
+	Reader io.Reader
+	Writer io.WriteCloser
 
 	conn    *ssh.Client
 	session *ssh.Session
@@ -47,7 +45,7 @@ func (sshConn *sshConnection) Close() error {
 func (sshConn *sshConnection) Connect() error {
 	config := sshConn.ClientConfig
 	if config == nil {
-		config = NewClientConfig(sshConn.Name)
+		config = newClientConfig(sshConn.Name)
 	}
 	conn, err := ssh.Dial("tcp", sshConn.Host, config)
 	if err != nil {
