@@ -83,6 +83,8 @@ func run(ctx context.Context, options Options) error {
 		Term: "bot",
 	}
 
+	logger.Info().Str("host", conn.Host).Str("name", conn.Name).Msg("connecting")
+
 	if err := conn.Connect(); err != nil {
 		return err
 	}
@@ -91,7 +93,7 @@ func run(ctx context.Context, options Options) error {
 	relay := ioRelay{
 		RelayHandlers: RelayHandlers{
 			OnMessage: func(msg string) {
-				fmt.Println("got msg:", msg)
+				logger.Debug().Str("received", msg).Msg("msg")
 			},
 		},
 	}
