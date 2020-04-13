@@ -28,6 +28,7 @@ type sshConnection struct {
 	Reader io.Reader
 	Writer io.WriteCloser
 
+	Term         string // TERM env var to send, suggested: "bot" or "xterm"
 	ClientConfig *ssh.ClientConfig
 
 	conn    *ssh.Client
@@ -58,30 +59,23 @@ func (sshConn *sshConnection) Connect() error {
 		return err
 	}
 
-	sshConn.Writer, err = session.StdinPipe()
-	if err != nil {
+	if sshConn.Writer, err = session.StdinPipe(); err != nil {
 		return err
 	}
 
-	sshConn.Reader, err = session.StdoutPipe()
-	if err != nil {
+	if sshConn.Reader, err = session.StdoutPipe(); err != nil {
 		return err
 	}
 
-	/*
-		err = session.RequestPty("xterm", 80, 40, ssh.TerminalModes{})
-		if err != nil {
-			return err
-		}
-	*/
-
-	err = session.Shell()
-	if err != nil {
+	if err := session.RequestPty(sshConn.Term, 1000, 100, ssh.TerminalModes{}); err != nil {
 		return err
 	}
 
-	_, err = session.SendRequest("ping", true, nil)
-	if err != nil {
+	if err := session.Shell(); err != nil {
+		return err
+	}
+
+	if _, err = session.SendRequest("ping", true, nil); err != nil {
 		return err
 	}
 
