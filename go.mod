@@ -1,4 +1,4 @@
-module github.com/shazow/ssh-relay
+module github.com/shazow/ssh-chat-relay
 
 go 1.14
 

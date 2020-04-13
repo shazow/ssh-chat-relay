@@ -26,7 +26,7 @@ func exit(code int, format string, args ...interface{}) {
 
 func main() {
 	host := "localhost:2022"
-	name := "ssh-relay"
+	name := "ssh-chat-relay"
 
 	conn := sshConnection{
 		Host: host,

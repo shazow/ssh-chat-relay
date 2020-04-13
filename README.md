@@ -1,4 +1,4 @@
-# ssh-relay
+# ssh-chat-relay
 
 Protocol relay for ssh servers.
 
