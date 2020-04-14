@@ -10,6 +10,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
+
+	"net/http"
+	_ "net/http/pprof"
 )
 
 // Version of the binary, assigned during build.
@@ -27,6 +30,8 @@ type Options struct {
 	Username  string `long:"name" description:"Username to connect with" default:"ssh-chat-relay"`
 	Verbose   []bool `long:"verbose" short:"v" description:"Show verbose logging."`
 	Version   bool   `long:"version" description:"Print version and exit."`
+
+	Pprof string `long:"pprof" description:"Bind pprof on http server on this addr. (Example: \"localhost:6060\")"`
 }
 
 func exit(code int, format string, args ...interface{}) {
@@ -57,6 +62,13 @@ func main() {
 		logger = logger.Level(zerolog.InfoLevel)
 	default:
 		logger = logger.Level(zerolog.DebugLevel)
+	}
+
+	if options.Pprof != "" {
+		go func() {
+			logger.Debug().Str("bind", options.Pprof).Msg("serving pprof http server")
+			fmt.Println(http.ListenAndServe(options.Pprof, nil))
+		}()
 	}
 
 	// Signals

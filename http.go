@@ -47,13 +47,6 @@ func (relay *wsRelay) Serve(ctx context.Context) error {
 	relay.serveCtx = ctx
 	relay.once = sync.Once{}
 	relay.received = make(chan string, MessageBuffer)
-	relay.done = make(chan struct{})
-
-	go func() {
-		<-ctx.Done()
-		logger.Debug().Msg("websocket relay http server aborted")
-		relay.Close()
-	}()
 
 	s := &http.Server{
 		Addr:    relay.Bind,
@@ -67,7 +60,20 @@ func (relay *wsRelay) Serve(ctx context.Context) error {
 			return ctx
 		},
 	}
-	return s.ListenAndServe()
+
+	ln, err := net.Listen("tcp", s.Addr)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		<-ctx.Done()
+		logger.Debug().Msg("websocket relay http server aborted")
+		ln.Close()
+		relay.Close()
+	}()
+
+	return s.Serve(ln)
 }
 
 func (relay *wsRelay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +119,6 @@ func (relay *wsRelay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (relay *wsRelay) Close() error {
 	relay.once.Do(func() {
 		close(relay.received)
-		close(relay.done)
 	})
 	return nil
 }
