@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/ring"
 	"context"
 	"net"
 	"net/http"
@@ -12,14 +13,17 @@ import (
 
 var MessageBuffer = 5
 var MessageTimeout = time.Second * 2
+var DefaultScrollback = 20
 
 type wsRelay struct {
-	Bind string
+	Bind       string
+	Scrollback int // Scrollback is the number of messages to backfill on join. -1 to disable.
 
 	Send func(string) error
 
-	upgrader websocket.Upgrader
-	serveCtx context.Context
+	serveCtx   context.Context
+	upgrader   websocket.Upgrader
+	scrollback ring.Ring
 
 	once     sync.Once
 	received chan string
@@ -34,6 +38,13 @@ func (relay *wsRelay) OnMessage(msg string) {
 	defer relay.mu.Unlock()
 
 	logger.Debug().Str("msg", msg).Msg("websocket relay received")
+
+	if relay.Scrollback > 0 {
+		relay.scrollback.Link(&ring.Ring{Value: msg})
+		if relay.scrollback.Len() > relay.Scrollback {
+			relay.scrollback.Unlink(1)
+		}
+	}
 
 	for conn, ch := range relay.conns {
 		select {
@@ -50,6 +61,9 @@ func (relay *wsRelay) Serve(ctx context.Context) error {
 	relay.once = sync.Once{}
 	relay.received = make(chan string, MessageBuffer)
 	relay.conns = map[*websocket.Conn](chan string){}
+	if relay.Scrollback == 0 {
+		relay.Scrollback = DefaultScrollback
+	}
 
 	s := &http.Server{
 		Addr:    relay.Bind,
@@ -102,6 +116,14 @@ func (relay *wsRelay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	logger.Debug().Str("remote", r.RemoteAddr).Msg("websocket relay client joined")
+
+	// Send scrollback
+	relay.scrollback.Do(func(v interface{}) {
+		if msg, ok := v.(string); ok {
+			conn.WriteMessage(websocket.TextMessage, []byte(msg))
+		}
+	})
+
 	ctx := r.Context()
 	for {
 		select {
