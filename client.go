@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 
 	"golang.org/x/crypto/ssh"
@@ -20,7 +21,7 @@ func newClientConfig(name string) *ssh.ClientConfig {
 }
 
 type sshConnection struct {
-	Host string // Host is the hostname:port to connect to on Connect()
+	Addr string // Addr is the host:port to connect to on Connect()
 	Name string // Name is the client username to connect with
 
 	Term         string // TERM env var to send, suggested: "bot" or "xterm"
@@ -34,23 +35,30 @@ type sshConnection struct {
 }
 
 func (sshConn *sshConnection) Close() error {
-	if sshConn.conn == nil || sshConn.session == nil {
-		return nil
+	if sshConn.conn != nil {
+		sshConn.conn.Close()
 	}
-	sshConn.session.Close()
-	sshConn.conn.Close()
+	if sshConn.session != nil {
+		sshConn.session.Close()
+	}
 	return nil
 }
 
-func (sshConn *sshConnection) Connect() error {
+func (sshConn *sshConnection) Connect(ctx context.Context) error {
 	config := sshConn.ClientConfig
 	if config == nil {
 		config = newClientConfig(sshConn.Name)
 	}
-	conn, err := ssh.Dial("tcp", sshConn.Host, config)
+	conn, err := ssh.Dial("tcp", sshConn.Addr, config)
 	if err != nil {
 		return err
 	}
+
+	go func() {
+		<-ctx.Done()
+		logger.Debug().Msg("ssh connection aborted")
+		sshConn.Close()
+	}()
 
 	session, err := conn.NewSession()
 	if err != nil {

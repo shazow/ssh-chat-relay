@@ -20,7 +20,7 @@ type Relay interface {
 	Close() error
 }
 
-type ioRelay struct {
+type ioSource struct {
 	RelayHandlers
 
 	sendCh    chan string
@@ -28,13 +28,13 @@ type ioRelay struct {
 	closeCh   chan struct{}
 }
 
-func (relay *ioRelay) init() {
+func (relay *ioSource) init() {
 	relay.sendCh = make(chan string)
 	relay.closeOnce = sync.Once{}
 	relay.closeCh = make(chan struct{})
 }
 
-func (relay *ioRelay) Serve(ctx context.Context, r io.Reader, w io.WriteCloser) error {
+func (relay *ioSource) Serve(ctx context.Context, r io.Reader, w io.WriteCloser) error {
 	relay.init()
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -67,7 +67,7 @@ func (relay *ioRelay) Serve(ctx context.Context, r io.Reader, w io.WriteCloser) 
 	return g.Wait()
 }
 
-func (relay *ioRelay) Send(msg string) error {
+func (relay *ioSource) Send(msg string) error {
 	if relay.sendCh == nil {
 		return errors.New("relay not initialized")
 	}
@@ -75,7 +75,7 @@ func (relay *ioRelay) Send(msg string) error {
 	return nil
 }
 
-func (relay *ioRelay) Close() error {
+func (relay *ioSource) Close() error {
 	relay.closeOnce.Do(func() {
 		relay.closeCh <- struct{}{}
 	})

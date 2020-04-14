@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -42,14 +43,34 @@ func (relay *wsRelay) OnMessage(msg string) {
 	}
 }
 
-func (relay *wsRelay) Serve(ctx context.Context) {
+func (relay *wsRelay) Serve(ctx context.Context) error {
 	relay.serveCtx = ctx
 	relay.once = sync.Once{}
 	relay.received = make(chan string, MessageBuffer)
 	relay.done = make(chan struct{})
+
+	go func() {
+		<-ctx.Done()
+		logger.Debug().Msg("websocket relay http server aborted")
+		relay.Close()
+	}()
+
+	s := &http.Server{
+		Addr:    relay.Bind,
+		Handler: relay,
+
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
+	}
+	return s.ListenAndServe()
 }
 
-func (relay *wsRelay) HTTPHandler(w http.ResponseWriter, r *http.Request) {
+func (relay *wsRelay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := relay.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to upgrade websocket")
@@ -71,6 +92,7 @@ func (relay *wsRelay) HTTPHandler(w http.ResponseWriter, r *http.Request) {
 		close(msgCh)
 	}()
 
+	logger.Debug().Str("remote", r.RemoteAddr).Msg("websocket relay client joined")
 	ctx := r.Context()
 	for {
 		select {
@@ -82,6 +104,7 @@ func (relay *wsRelay) HTTPHandler(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-relay.serveCtx.Done():
+			logger.Debug().Str("remote", r.RemoteAddr).Msg("websocket relay connection aborted")
 			return
 		}
 	}
@@ -90,6 +113,7 @@ func (relay *wsRelay) HTTPHandler(w http.ResponseWriter, r *http.Request) {
 func (relay *wsRelay) Close() error {
 	relay.once.Do(func() {
 		close(relay.received)
+		close(relay.done)
 	})
 	return nil
 }

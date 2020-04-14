@@ -9,6 +9,7 @@ import (
 	"github.com/jessevdk/go-flags"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 )
 
 // Version of the binary, assigned during build.
@@ -19,13 +20,13 @@ var logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 // Options contains the flag options
 type Options struct {
 	Args struct {
-		Host string `positional-arg-name:"Host" description:"SSH hostname:port to connect with and relay"`
+		Addr string `positional-arg-name:"Addr" description:"SSH host:port to connect with and relay"`
 	} `positional-args:"yes"`
 
-	Username string `long:"name" description:"Username to connect with" default:"ssh-relay"`
-
-	Verbose []bool `long:"verbose" short:"v" description:"Show verbose logging."`
-	Version bool   `long:"version" description:"Print version and exit."`
+	Websocket string `long:"websocket" description:"Websocket host:port to bind to and supply a relay"`
+	Username  string `long:"name" description:"Username to connect with" default:"ssh-chat-relay"`
+	Verbose   []bool `long:"verbose" short:"v" description:"Show verbose logging."`
+	Version   bool   `long:"version" description:"Print version and exit."`
 }
 
 func exit(code int, format string, args ...interface{}) {
@@ -78,19 +79,19 @@ func main() {
 
 func run(ctx context.Context, options Options) error {
 	conn := sshConnection{
-		Host: options.Args.Host,
+		Addr: options.Args.Addr,
 		Name: options.Username,
 		Term: "bot",
 	}
 
-	logger.Info().Str("host", conn.Host).Str("name", conn.Name).Msg("connecting")
+	logger.Info().Str("addr", conn.Addr).Str("name", conn.Name).Msg("connecting")
 
-	if err := conn.Connect(); err != nil {
+	if err := conn.Connect(ctx); err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	relay := ioRelay{
+	src := ioSource{
 		RelayHandlers: RelayHandlers{
 			OnMessage: func(msg string) {
 				logger.Debug().Str("received", msg).Msg("msg")
@@ -98,5 +99,21 @@ func run(ctx context.Context, options Options) error {
 		},
 	}
 
-	return relay.Serve(ctx, conn.Reader, conn.Writer)
+	g, ctx := errgroup.WithContext(ctx)
+	if options.Websocket != "" {
+		ws := wsRelay{
+			Bind: options.Websocket,
+			Send: src.Send,
+		}
+		logger.Info().Str("addr", ws.Bind).Msg("serving websocket relay")
+		g.Go(func() error {
+			return ws.Serve(ctx)
+		})
+	}
+
+	g.Go(func() error {
+		return src.Serve(ctx, conn.Reader, conn.Writer)
+	})
+
+	return g.Wait()
 }
