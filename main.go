@@ -103,11 +103,13 @@ func run(ctx context.Context, options Options) error {
 	}
 	defer conn.Close()
 
+	DebugOnMessage := func(msg string) {
+		logger.Debug().Str("received", msg).Msg("msg")
+	}
+
 	src := ioSource{
 		RelayHandlers: RelayHandlers{
-			OnMessage: func(msg string) {
-				logger.Debug().Str("received", msg).Msg("msg")
-			},
+			OnMessage: DebugOnMessage,
 		},
 	}
 
@@ -116,6 +118,10 @@ func run(ctx context.Context, options Options) error {
 		ws := wsRelay{
 			Bind: options.Websocket,
 			Send: src.Send,
+		}
+		src.RelayHandlers.OnMessage = func(msg string) {
+			DebugOnMessage(msg)
+			ws.OnMessage(msg)
 		}
 		logger.Info().Str("addr", ws.Bind).Msg("serving websocket relay")
 		g.Go(func() error {

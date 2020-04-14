@@ -33,6 +33,8 @@ func (relay *wsRelay) OnMessage(msg string) {
 	relay.mu.Lock()
 	defer relay.mu.Unlock()
 
+	logger.Debug().Str("msg", msg).Msg("websocket relay received")
+
 	for conn, ch := range relay.conns {
 		select {
 		case ch <- msg:
@@ -47,6 +49,7 @@ func (relay *wsRelay) Serve(ctx context.Context) error {
 	relay.serveCtx = ctx
 	relay.once = sync.Once{}
 	relay.received = make(chan string, MessageBuffer)
+	relay.conns = map[*websocket.Conn](chan string){}
 
 	s := &http.Server{
 		Addr:    relay.Bind,
